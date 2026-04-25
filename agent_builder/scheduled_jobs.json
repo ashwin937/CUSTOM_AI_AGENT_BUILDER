@@ -1,0 +1,24 @@
+[
+  {
+    "id": "daily_greeting_poster_1773987902",
+    "agent": "daily_greeting_poster",
+    "function": "Generates and posts a greeting message on Instagram every day at 11:55 am",
+    "type": "daily",
+    "time": "11:55",
+    "params": {},
+    "active": true,
+    "last_run": null,
+    "last_output": null
+  },
+  {
+    "id": "daily_linkedin_greeting_1773988611",
+    "agent": "daily_linkedin_greeting",
+    "function": "Sends a greeting message to LinkedIn every day at 12:15 pm",
+    "type": "daily",
+    "time": "12:15",
+    "params": {},
+    "active": true,
+    "last_run": "2026-03-20T12:15:24.795848",
+    "last_output": "LinkedIn Post: Hi everyone! \ud83d\udc4b Today's reminder to connect, grow, and share ideas. Let's build something amazing together! #Networking #ProfessionalGrowth #LinkedIn"
+  }
+]

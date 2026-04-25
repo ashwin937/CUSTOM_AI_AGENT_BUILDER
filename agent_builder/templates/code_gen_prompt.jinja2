@@ -1,0 +1,102 @@
+You are a Python developer. Generate COMPLETE working Python agent code from this spec.
+
+Generate these exact file sections separated by === filename ===:
+
+=== agent.py ===
+import os
+import json
+from datetime import datetime
+from openai import OpenAI
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Agent Configuration
+AGENT_SYSTEM_PROMPT = """You are an AI agent. Your job is to {{ task }}.
+Always show output as a draft before any action.
+Never make up facts. Flag uncertainty with [REVIEW NEEDED]."""
+
+class Agent:
+    def __init__(self):
+        self.client = OpenAI(
+            base_url=os.getenv("LLM_BASE_URL", "http://localhost:11434/v1"),
+            api_key="ollama"
+        )
+        self.model = os.getenv("LLM_MODEL", "qwen3:4b")
+    
+    def process_task(self, user_input: str) -> str:
+        """Main task processing method."""
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": AGENT_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_input}
+                ],
+                temperature=0.7,
+                top_p=0.95
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Error processing task: {e}")
+            return f"Error: {str(e)}"
+    
+    def run(self, user_input: str) -> str:
+        """Execute the agent and return result."""
+        output = self.process_task(user_input)
+        
+        result = {
+            "status": "success",
+            "output": output,
+            "agent": "{{ display_name }}",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        return json.dumps(result, indent=2)
+
+def run(user_input: str) -> str:
+    agent = Agent()
+    return agent.run(user_input)
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1:
+        user_input = sys.argv[1]
+    else:
+        user_input = input("Enter task: ")
+    
+    result = run(user_input)
+    print(result)
+
+=== config.py ===
+import os
+
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:4b")
+
+AGENT_CONFIG = {
+    "name": "{{ agent_name }}",
+    "display_name": "{{ display_name }}",
+    "department": "{{ department }}",
+    "task": "{{ task }}",
+    "trigger": "{{ trigger }}",
+    "output_type": "{{ output_type }}"
+}
+
+=== requirements.txt ===
+openai>=1.0.0
+
+=== README.md ===
+# {{ display_name }}
+
+**Department:** {{ department }}  
+**Task:** {{ task }}  
+**Type:** {{ output_type }}
+
+## Running this agent
+
+```bash
+pip install -r requirements.txt
+python agent.py
+```

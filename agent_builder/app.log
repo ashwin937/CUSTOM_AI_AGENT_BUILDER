@@ -1,0 +1,23 @@
+INFO:__main__:✅ Gmail credentials configured
+INFO:scheduler_manager:Loaded 2 scheduled jobs.
+INFO:scheduler_manager:Scheduler started.
+INFO:gmail_automation:✅ Loaded existing Gmail token
+ERROR:gmail_automation:❌ Gmail initialization error: ('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})
+/Users/apple/Downloads/team  quintsync/agent_builder/app.py:536: UserWarning: The parameters have been moved from the Blocks constructor to the launch() method in Gradio 6.0: theme. Please pass these parameters to launch() instead.
+  with gr.Blocks(theme=gr.themes.Soft(), title="AI Agent Builder") as builder:
+/Users/apple/Downloads/team  quintsync/agent_builder/app.py:702: UserWarning: The parameters have been moved from the Blocks constructor to the launch() method in Gradio 6.0: theme. Please pass these parameters to launch() instead.
+  with gr.Blocks(theme=gr.themes.Soft(), title="AI Agent") as viewer:
+INFO:httpx:HTTP Request: HEAD https://huggingface.co/api/telemetry/https%3A/api.gradio.app/gradio-initiated-analytics "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: HEAD https://huggingface.co/api/telemetry/https%3A/api.gradio.app/gradio-initiated-analytics "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET https://api.gradio.app/pkg-version "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET https://api.gradio.app/pkg-version "HTTP/1.1 200 OK"
+✅ Loaded .env from /Users/apple/Downloads/team  quintsync/agent_builder/.env
+🚀 Starting AI Agent Builder...
+📌 Builder: http://127.0.0.1:7860
+📌 Agent Pages: http://127.0.0.1:7861
+INFO:httpx:HTTP Request: GET http://127.0.0.1:7860/gradio_api/startup-events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:7861/gradio_api/startup-events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: HEAD http://127.0.0.1:7860/ "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: HEAD http://127.0.0.1:7861/ "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: HEAD https://huggingface.co/api/telemetry/https%3A/api.gradio.app/gradio-launched-telemetry "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: HEAD https://huggingface.co/api/telemetry/https%3A/api.gradio.app/gradio-launched-telemetry "HTTP/1.1 200 OK"
