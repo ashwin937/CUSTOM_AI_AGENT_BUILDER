@@ -1,0 +1,38 @@
+# Environment variables
+.env
+agent_builder/.env
+
+# Sensitive files
+agent_builder/gmail_token.pickle
+agent_builder/oauth_tokens.db
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+app_output.log
+
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Project specific
+saved_agents/
+debug_*.png
+debug_*.html
