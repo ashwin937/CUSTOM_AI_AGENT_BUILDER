@@ -16,7 +16,7 @@ import uuid
 import webbrowser
 from datetime import datetime
 from typing import Dict, List, Optional
-from openai import OpenAI
+import ollama
 import gradio as gr
 
 # Load environment variables
@@ -103,7 +103,28 @@ verify_credentials()
 
 # ========== INITIALIZE CLIENTS & GMAIL ==========
 
-chat_client = OpenAI(base_url=os.getenv("LLM_BASE_URL", "http://localhost:11434/v1"), api_key="ollama")
+def ensure_model_available(model_name: str):
+    """Ensure the requested Ollama model is downloaded."""
+    try:
+        logger.info(f"Checking for model: {model_name}...")
+        try:
+            ollama.show(model_name)
+            logger.info(f"✅ Model {model_name} is already available.")
+        except ollama.ResponseError as e:
+            if e.status_code == 404:
+                logger.info(f"Model {model_name} not found. Pulling...")
+                ollama.pull(model_name)
+                logger.info(f"✅ Model {model_name} pulled successfully.")
+            else:
+                raise e
+    except Exception as e:
+        logger.warning(f"⚠️ Could not verify/pull model {model_name}: {e}")
+
+MODEL_NAME = os.getenv("LLM_MODEL", "qwen3:4b")
+ensure_model_available(MODEL_NAME)
+
+# Keep chat_client as None or a dummy since we'll use ollama directly
+chat_client = None 
 
 # Initialize Scheduler
 scheduler = SchedulerManager(client=chat_client)
@@ -119,17 +140,20 @@ except Exception as e:
 
 linkedin = None
 try:
-    # Requires an access token typically, if you have one it can be passed or managed by OAuth manager 
-    # Here we instantiate it; but the actual oauth flow is needed
-    from oauth_manager import OAuthManager
-    oauth_mgr = OAuthManager()
-    token_data = oauth_mgr.get_token('linkedin')
-    if token_data and isinstance(token_data, dict):
-         linkedin_token = token_data.get('access_token')
-    elif token_data and isinstance(token_data, str):
-         linkedin_token = token_data
-    else:
-         linkedin_token = None
+    # 1. Try .env first
+    linkedin_token = os.getenv("LINKEDIN_ACCESS_TOKEN")
+    
+    if not linkedin_token:
+        # 2. Fallback to OAuthManager (db)
+        from oauth_manager import OAuthManager
+        oauth_mgr = OAuthManager()
+        token_data = oauth_mgr.get_token('linkedin')
+        if token_data and isinstance(token_data, dict):
+             linkedin_token = token_data.get('access_token')
+        elif token_data and isinstance(token_data, str):
+             linkedin_token = token_data
+        else:
+             linkedin_token = None
 
     linkedin = LinkedInIntegration(access_token=linkedin_token) if linkedin_token else LinkedInIntegration()
 except Exception as e:
@@ -225,8 +249,11 @@ def process_response(raw_response: str, user_message: str) -> tuple:
         NEW_AGENT_CREATED = agent_name
         
         # Auto-open agent page if running locally
-        # This solves: "move to the new page with created agent... look like an automation"
-        webbrowser.open(f"http://127.0.0.1:7861/?agent={link_id}")
+        try:
+            logger.info(f"Opening agent page: http://127.0.0.1:7861/?agent={link_id}")
+            webbrowser.open(f"http://127.0.0.1:7861/?agent={link_id}")
+        except Exception as e:
+            logger.warning(f"Could not auto-open browser: {e}")
         
         # Clean response
         clean_response = re.sub(r'<<<SPEC>>>.*?$', '', raw_response, flags=re.DOTALL).strip()
@@ -269,14 +296,15 @@ def chat(message: str, history, uploaded_files=None, context_mode="builder"):
         user_msg_lower = message.lower()
         
         # === 1. Duplicate Prevention (Builder Mode) ===
-        if context_mode == "builder" and any(w in user_msg_lower for w in ["build", "create", "make"]) and "agent" in user_msg_lower:
+        import re
+        if context_mode == "builder" and any(re.search(rf'\b{w}\b', user_msg_lower) for w in ["build", "create", "make"]) and "agent" in user_msg_lower:
             existing_agents = get_all_agents_list()
             # Keywords to check for duplicates
             keywords = ["email", "instagram", "linkedin", "coding", "finance", "support", "sales", "marketing"]
             for k in keywords:
                 if k in user_msg_lower:
                     # Find agent with this keyword in name or task
-                    match = next((a for a in existing_agents if k in a.get("agent_name", "").lower() or k in a.get("task", "").lower()), None)
+                    match = next((a for a in existing_agents if k in str(a.get("agent_name") or "").lower() or k in str(a.get("task") or "").lower()), None)
                     if match:
                          # Don't block if user is specific (e.g. "Create a NEW email agent"), but warn
                          if "new" not in user_msg_lower:
@@ -290,7 +318,7 @@ def chat(message: str, history, uploaded_files=None, context_mode="builder"):
         # Check for Email Queries and route to Email Agent if exists
         if any(w in user_msg_lower for w in ["email", "gmail", "send message"]):
              existing_agents = get_all_agents_list()
-             email_agent = next((a for a in existing_agents if "email" in a.get("agent_name", "").lower() or "mail" in a.get("task", "").lower()), None)
+             email_agent = next((a for a in existing_agents if "email" in str(a.get("agent_name") or "").lower() or "mail" in str(a.get("task") or "").lower()), None)
              if email_agent:
                  special_instruction += f"\n\n[SYSTEM] A specialized agent '{email_agent.get('display_name')}' exists for handling emails. Its predefined task is: '{email_agent.get('task')}'. Use its style and instructions to handle this request."
 
@@ -364,26 +392,24 @@ def chat(message: str, history, uploaded_files=None, context_mode="builder"):
              repo_url = res['repo']['html_url']
              
              # Deploy files
-             reqs = "openai\npython-dotenv\nrequests\n"
+             reqs = "ollama\npython-dotenv\nrequests\n"
              gh.upload_file(repo_name, "requirements.txt", reqs, "Add dependencies")
              
              code = f"""import os
-from openai import OpenAI
+import ollama
 
 # Agent: {agent_data.get('display_name')}
 # Task: {agent_data.get('task')}
 
-client = OpenAI()
-
 def run_agent(input_text):
-    response = client.chat.completions.create(
-        model="gpt-4",
+    response = ollama.chat(
+        model='{os.getenv("LLM_MODEL", "qwen3:4b")}',
         messages=[
             {{'role': 'system', 'content': 'You are a helpful AI agent.'}},
             {{'role': 'user', 'content': input_text}}
         ]
     )
-    return response.choices[0].message.content
+    return response['message']['content']
 
 if __name__ == "__main__":
     print("Agent {agent_data.get('display_name')} is running...")
@@ -443,16 +469,21 @@ Caption: [The caption including hashtags]
 
         messages.append({"role": "user", "content": message})
 
-        response = chat_client.chat.completions.create(
-            model=os.getenv("LLM_MODEL", "qwen3:4b"),
+        # Use ollama.chat instead of OpenAI client
+        response = ollama.chat(
+            model=MODEL_NAME,
             messages=messages,
-            temperature=0.7,
+            options={
+                "temperature": 0.7
+            }
         )
 
-        raw_response = response.choices[0].message.content
+        raw_response = response['message']['content']
+        logger.info(f"LLM Response: {raw_response[:100]}...")
         final_response, agent_name = process_response(raw_response, message)
         
         # Auto-send email if triggered
+        logger.info("Checking for automation triggers...")
         try:
             user_msg_lower = message.lower()
             if any(word in user_msg_lower for word in ["email", "gmail", "send message", "compose", "draft"]):
@@ -467,13 +498,22 @@ Caption: [The caption including hashtags]
                     body = body_match.group(1).strip() if body_match else final_response
                     
                     if gmail and gmail.is_authenticated():
+                        logger.info(f"Attempting to send email to {to_email}...")
                         result = gmail.send_email(to_email, subject, body)
                         if result:
+                            logger.info("✅ Email sent successfully.")
                             final_response += f"\n\n✅ **Email successfully sent to {to_email}!**\n\n**Proof of Delivery:**\n- **To:** {to_email}\n- **Subject:** {subject}\n- **Status:** Sent successfully via Gmail Integration."
                         else:
                             final_response += f"\n\n❌ **Failed to send email to {to_email}.** Check logs."
                     else:
-                        final_response += f"\n\n⚠️ **Could not send email:** Gmail is not authenticated or not initialized. Please run authorize_gmail() or check your tokens."
+                        # Fallback to browser draft
+                        from integrations import ServiceLauncher
+                        launcher = ServiceLauncher()
+                        result = launcher.open_and_launch("gmail", body, to=to_email, subject=subject)
+                        if result.get("success"):
+                            final_response += f"\n\n⚠️ **Gmail API not authenticated.** I have opened a draft in your browser for you to review and send manually."
+                        else:
+                            final_response += f"\n\n⚠️ **Could not send email:** Gmail is not authenticated and browser fallback failed."
             
             # Auto-post to LinkedIn if triggered
             if any(word in user_msg_lower for word in ["linkedin", "post a job", "post something", "job offer"]):
@@ -533,7 +573,7 @@ Caption: [The caption including hashtags]
 
 def create_builder():
     """Create the main builder interface."""
-    with gr.Blocks(theme=gr.themes.Soft(), title="AI Agent Builder") as builder:
+    with gr.Blocks(title="AI Agent Builder") as builder:
         gr.Markdown("# 🚀 AI Agent Builder")
         gr.Markdown("**Build agents. Get unique links. Open in new page.**")
         gr.Markdown("---")
@@ -554,7 +594,11 @@ def create_builder():
                 # Chat UI (gr.ChatInterface removed/changed in Gradio 6.x)
                 chatbot = gr.Chatbot()
                 textbox = gr.Textbox(placeholder="Build me an email writing agent...", scale=7)
-                send_btn = gr.Button("Send")
+                with gr.Row():
+                    send_btn = gr.Button("Send", variant="primary")
+                    auth_gmail_btn = gr.Button("🔐 Authorize Gmail", variant="secondary")
+                
+                auth_output = gr.Markdown(visible=False)
                 hist_state = gr.State([])
 
                 def _submit_message(message, history, uploaded_files, mode_val):
@@ -562,7 +606,7 @@ def create_builder():
 
                     Inputs:
                     - message: str
-                    - history: list of messages (Gradio 6.x format)
+                    - history: list of messages (Gradio 6.x format with role/content)
                     - uploaded_files: uploaded file paths or None
                     - mode_val: 'builder' or 'viewer'
 
@@ -579,18 +623,36 @@ def create_builder():
                             resp_text = resp[0]
                         else:
                             resp_text = resp
-                        # Gradio 6.x format: list of tuples or dicts
-                        history.append((message, resp_text))
+                        # Gradio 6.x format: list of dicts with role/content
+                        history.append({"role": "user", "content": message})
+                        history.append({"role": "assistant", "content": resp_text})
                         return history, ""
                     except Exception as e:
                         # On error, append error message
                         history = history or []
-                        history.append((message, f"❌ Error: {e}"))
+                        history.append({"role": "user", "content": message})
+                        history.append({"role": "assistant", "content": f"❌ Error: {e}"})
                         return history, ""
 
                 # Wire up submit and button
                 textbox.submit(_submit_message, inputs=[textbox, hist_state, uploaded, mode], outputs=[chatbot, textbox])
                 send_btn.click(_submit_message, inputs=[textbox, hist_state, uploaded, mode], outputs=[chatbot, textbox])
+                
+                def _auth_gmail():
+                    if not gmail:
+                        return "❌ Gmail credentials not found in .env"
+                    try:
+                        # We'll use a modified authorize that doesn't block or returns the URL
+                        # For now, let's just trigger the standard one but inform the user
+                        import threading
+                        thread = threading.Thread(target=gmail.authorize)
+                        thread.start()
+                        return "🔐 **Authorization Started.** Please check the terminal for the link or look for a browser popup on the host system."
+                    except Exception as e:
+                        return f"❌ Authorization failed: {e}"
+
+                auth_gmail_btn.click(_auth_gmail, outputs=auth_output)
+                auth_gmail_btn.click(lambda: gr.update(visible=True), outputs=auth_output)
             
             # ===== AGENT DIRECTORY =====
             with gr.TabItem("� Agent Directory"):
@@ -700,7 +762,7 @@ def create_builder():
 
 def create_agent_viewer():
     """Create interface to view/use specific agent."""
-    with gr.Blocks(theme=gr.themes.Soft(), title="AI Agent") as viewer:
+    with gr.Blocks(title="AI Agent") as viewer:
         gr.Markdown("# 🤖 Agent Viewer")
         
         # State to track context
@@ -775,11 +837,13 @@ def create_agent_viewer():
                     resp_text = resp[0]
                 else:
                     resp_text = resp
-                history.append((message, resp_text))
+                history.append({"role": "user", "content": message})
+                history.append({"role": "assistant", "content": resp_text})
                 return history, ""
             except Exception as e:
                 history = history or []
-                history.append((message, f"❌ Error: {e}"))
+                history.append({"role": "user", "content": message})
+                history.append({"role": "assistant", "content": f"❌ Error: {e}"})
                 return history, ""
 
         textbox.submit(_submit_message_view, inputs=[textbox, hist_state, uploaded, mode], outputs=[chatbot, textbox])
@@ -813,7 +877,8 @@ if __name__ == "__main__":
             server_port=7860,
             share=False,
             show_error=True,
-            quiet=True
+            quiet=True,
+            theme=gr.themes.Soft()
         )
     
     def run_viewer():
@@ -822,7 +887,8 @@ if __name__ == "__main__":
             server_port=7861,
             share=False,
             show_error=True,
-            quiet=True
+            quiet=True,
+            theme=gr.themes.Soft()
         )
     
     # Start both in threads

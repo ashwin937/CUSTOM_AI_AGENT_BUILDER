@@ -6,7 +6,7 @@ import json
 import os
 from datetime import datetime
 import re
-from openai import OpenAI
+import ollama
 from gmail_automation import get_gmail_automation
 from integrations import LinkedInIntegration, InstagramIntegration
 from agent_store import load_agent_memory, append_agent_memory
@@ -160,9 +160,8 @@ class SchedulerManager:
         logger.info(f"Running scheduled job: {job_data['id']} for agent {agent_name}")
         
         try:
-            if not self.client:
-                 logger.error("No OpenAI client available for scheduler.")
-                 return
+            # We now use the ollama library directly
+            pass
 
             # Retrieve Memory
             memory_context = load_agent_memory(agent_name)
@@ -178,18 +177,21 @@ class SchedulerManager:
             
             user_msg = "Please execute your scheduled task now."
             
-            # Using qwen3:4b as seen in app.py or fallback
+            # Using ollama.chat instead of OpenAI client
             model = os.getenv("LLM_MODEL", "qwen3:4b") 
             
-            response = self.client.chat.completions.create(
+            response = ollama.chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_msg},
                     {"role": "user", "content": user_msg}
-                ]
+                ],
+                options={
+                    "temperature": 0.7
+                }
             )
             
-            output = response.choices[0].message.content
+            output = response['message']['content']
             logger.info(f"Agent {agent_name} output: {output}")
             
             # Save run details

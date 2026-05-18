@@ -1,12 +1,12 @@
-gradio
+gradio==4.26.0
 openai
 python-dotenv
 requests
 google-auth-oauthlib
 google-auth
 google-api-python-client
-
-mcp
+schedule
 selenium
 webdriver-manager
 undetected-chromedriver
+ollama

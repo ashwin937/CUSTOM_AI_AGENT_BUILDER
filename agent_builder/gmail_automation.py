@@ -35,33 +35,39 @@ class GmailAutomation:
     def _initialize(self):
         """Initialize Gmail service with OAuth."""
         try:
-            # Load existing token if available
+            # 1. Try loading from pickle first
             if os.path.exists(TOKEN_FILE):
                 with open(TOKEN_FILE, 'rb') as token:
                     self.creds = pickle.load(token)
-                    logger.info("✅ Loaded existing Gmail token")
-            else:
-                logger.warning("⚠️ No Gmail token found. Run authorize_gmail() to set up.")
+                    logger.info("✅ Loaded existing Gmail token from pickle")
+            
+            # 2. Fallback to GMAIL_ACCESS_TOKEN from .env
+            if not self.creds or not self.creds.valid:
+                env_token = os.getenv("GMAIL_ACCESS_TOKEN")
+                if env_token:
+                    self.creds = Credentials(env_token)
+                    logger.info("✅ Using Gmail Access Token from .env")
+
+            if not self.creds:
+                logger.warning("⚠️ No Gmail token found. Please authorize or set GMAIL_ACCESS_TOKEN in .env")
                 return False
             
-            # If no valid credentials, try to refresh
-            if self.creds and not self.creds.valid:
-                if self.creds.expired and self.creds.refresh_token:
+            # If creds have a refresh token, try to refresh if expired
+            if self.creds and not self.creds.valid and self.creds.expired and self.creds.refresh_token:
+                try:
                     self.creds.refresh(Request())
                     logger.info("✅ Gmail token refreshed")
-                else:
-                    logger.warning("⚠️ Gmail credentials invalid. Need re-authentication.")
-                    return False
+                except Exception as e:
+                    if "invalid_grant" in str(e):
+                        logger.error("❌ Gmail token expired (invalid_grant). Deleting token file.")
+                        if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+                    raise e
             
             # Build Gmail service
             if self.creds and self.creds.valid:
                 self.service = build('gmail', 'v1', credentials=self.creds)
                 logger.info("✅ Gmail service initialized successfully")
                 return True
-            
-        except Exception as e:
-            logger.error(f"❌ Gmail initialization error: {e}")
-            return False
             
         except Exception as e:
             logger.error(f"❌ Gmail initialization error: {e}")
@@ -136,7 +142,7 @@ class GmailAutomation:
                     "client_secret": self.client_secret,
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": ["http://localhost:8080/"]
+                    "redirect_uris": ["http://localhost:8000/"]
                 }
             }
             
@@ -148,7 +154,7 @@ class GmailAutomation:
             flow = InstalledAppFlow.from_client_secrets_file(
                 'gmail_creds_temp.json', SCOPES)
             logger.info("📱 Opening browser for authorization...\nIf browser doesn't open, visit: https://accounts.google.com/o/oauth2/auth")
-            self.creds = flow.run_local_server(port=8080, open_browser=True)
+            self.creds = flow.run_local_server(port=8000, open_browser=True)
             
             # Save token for future use
             with open(TOKEN_FILE, 'wb') as token:
